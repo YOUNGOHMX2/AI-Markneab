@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Othello AI V10 - Divine Stability</title>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --bg: #0f172a; --panel: #1e293b; --green: #14532d; --cyan: #22d3ee; --gold: #facc15; --danger: #ef4444; --void: #020617; --block: #5d4037; }
+        body { font-family: 'Kanit', sans-serif; background: var(--bg); color: white; display: flex; flex-direction: column; align-items: center; padding: 10px; margin: 0; min-height: 100vh; }
+        .container { width: 100%; max-width: 450px; }
+        .panel { background: var(--panel); padding: 15px; border-radius: 20px; margin-bottom: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); border: 1px solid #334155; }
+        .score-box { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; background: #020617; padding: 12px; border-radius: 12px; border: 1px solid var(--cyan); }
+        .pass-alert { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(239, 68, 68, 0.95); padding: 15px 30px; border-radius: 12px; z-index: 100; display: none; font-weight: bold; box-shadow: 0 0 25px rgba(0,0,0,0.7); font-size: 22px; text-align: center; border: 2px solid white; animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        @keyframes pop { from { transform: translate(-50%, -50%) scale(0.5); } to { transform: translate(-50%, -50%) scale(1); } }
+        .map-selector { display: none; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 10px; }
+        .map-btn { padding: 8px; border: 1px solid #475569; background: #334155; color: white; border-radius: 6px; font-size: 11px; cursor: pointer; }
+        .map-btn.active { background: var(--gold); color: #000; font-weight: bold; }
+        .advantage-container { background: #0f172a; border-radius: 8px; padding: 10px; margin-bottom: 10px; border: 1px solid #334155; }
+        .adv-bar-bg { width: 100%; height: 12px; background: #334155; border-radius: 10px; overflow: hidden; display: flex; box-shadow: inset 0 2px 4px rgba(0,0,0,0.3); }
+        #adv-black { background: #000; width: 50%; transition: width 0.8s ease-in-out; }
+        #adv-white { background: #fff; width: 50%; transition: width 0.8s ease-in-out; }
+        .toolbar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .btn { padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-family: 'Kanit'; font-weight: 500; color: white; font-size: 13px; }
+        .btn-mode { background: #6366f1; grid-column: span 2; }
+        .btn-mode.active { background: var(--cyan); color: black; }
+        .board-wrapper { background: #000; padding: 4px; border-radius: 10px; position: relative; width: 100%; box-sizing: border-box; }
+        .board { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; width: 100%; aspect-ratio: 1/1; background: #0f172a; }
+        .cell { background: var(--green); display: flex; justify-content: center; align-items: center; position: relative; cursor: pointer; }
+        .cell.block { background: var(--block); }
+        .cell.void { background: var(--void); pointer-events: none; }
+        .piece { width: 85%; height: 85%; border-radius: 50%; z-index: 2; transition: transform 0.4s, background 0.4s; box-shadow: 0 2px 5px rgba(0,0,0,0.4); }
+        .black { background: radial-gradient(circle at 30% 30%, #444, #000); }
+        .white { background: radial-gradient(circle at 30% 30%, #fff, #bbb); }
+        .hint { width: 35%; height: 35%; background: var(--gold); border-radius: 50%; position: absolute; opacity: 0.7; animation: pulse 1.2s infinite; z-index: 1; border: 1px solid black; }
+        @keyframes pulse { 0% { transform: scale(1); opacity: 0.7; } 50% { transform: scale(1.6); opacity: 0.2; } 100% { transform: scale(1); opacity: 0.7; } }
+        #ai-status { text-align: center; font-size: 12px; color: var(--cyan); margin-top: 8px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="panel">
+        <div class="score-box">
+            <span>⚫ <b id="b-score">2</b></span>
+            <span id="turn-label" style="color:var(--cyan); font-size: 14px;">ตา: <b id="turn-display">ดำ</b></span>
+            <span>⚪ <b id="w-score">2</b></span>
+        </div>
+        <div class="advantage-container">
+            <div class="adv-bar-bg"><div id="adv-black"></div><div id="adv-white"></div></div>
+            <div id="adv-text" style="text-align:center; font-size:12px; margin-top:5px; color:var(--gold);">กำลังประเมินความมั่นคง...</div>
+        </div>
+        <div class="toolbar">
+            <button id="modeBtn" class="btn btn-mode" onclick="toggleAdvancedMode()">เปิดโหมดรอบขั้นสูง</button>
+            <div id="mapTabs" class="map-selector">
+                <button id="btn-std" class="map-btn active" onclick="setMap('std')">มาตรฐาน</button>
+                <button id="btn-cross" class="map-btn" onclick="setMap('cross')">กากบาท</button>
+                <button id="btn-oct" class="map-btn" onclick="setMap('oct')">แปดเหลี่ยม</button>
+            </div>
+            <select id="turnSelector" style="grid-column: span 2; background: #334155; color: white; border: 1px solid #475569; padding: 10px; border-radius: 8px; margin-top: 5px;" onchange="autoPassLogic()">
+                <option value="1">คุณเล่น: สีดำ (Black)</option>
+                <option value="2">คุณเล่น: สีขาว (White)</option>
+            </select>
+            <button class="btn" style="background:#475569" onclick="undo()">ย้อนกลับ</button>
+            <button class="btn" style="background:var(--danger)" onclick="resetBoard()">เริ่มใหม่</button>
+        </div>
+        <div id="ai-status">AI V10.0 (Stability Engaged)</div>
+    </div>
+    <div class="board-wrapper">
+        <div id="passMsg" class="pass-alert">PASS!</div>
+        <div class="board" id="board"></div>
+    </div>
+</div>
+
+<script>
+let grid = Array(8).fill().map(() => Array(8).fill(0));
+let obstacles = Array(8).fill().map(() => Array(8).fill(0));
+let isAdvanced = false;
+let bestMove = null;
+let history = [];
+
+const maps = {
+    std: { blocks: [[1,1],[1,6],[6,1],[6,6]], voids: [] },
+    cross: { blocks: [], voids: [[0,0],[0,1],[1,0],[1,1],[0,6],[0,7],[1,6],[1,7],[6,0],[6,1],[7,0],[7,1],[6,6],[6,7],[7,6],[7,7]] },
+    oct: { blocks: [], voids: [[0,0],[0,1],[0,6],[0,7],[1,0],[1,7],[6,0],[6,7],[7,0],[7,1],[7,6],[7,7]] }
+};
+
+// V10 Weighted Matrix (ให้ความสำคัญมุมและป้องกันการเสียมุม)
+const weights = [
+    [200, -60, 30, 10, 10, 30, -60, 200],
+    [-60, -100, -5, -5, -5, -5, -100, -60],
+    [ 30,  -5, 15,  3,  3, 15,  -5,  30],
+    [ 10,  -5,  3,  2,  2,  3,  -5,  10],
+    [ 10,  -5,  3,  2,  2,  3,  -5,  10],
+    [ 30,  -5, 15,  3,  3, 15,  -5,  30],
+    [-60, -100, -5, -5, -5, -5, -100, -60],
+    [200, -60, 30, 10, 10, 30, -60, 200]
+];
+
+function toggleAdvancedMode() {
+    isAdvanced = !isAdvanced;
+    document.getElementById('modeBtn').innerText = isAdvanced ? "⭐ โหมดขั้นสูง (เปิด)" : "เปิดโหมดรอบขั้นสูง";
+    document.getElementById('modeBtn').classList.toggle('active');
+    document.getElementById('mapTabs').style.display = isAdvanced ? "grid" : "none";
+    if (!isAdvanced) obstacles = Array(8).fill().map(() => Array(8).fill(0));
+    resetBoard();
+}
+
+function setMap(k) {
+    document.querySelectorAll('.map-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('btn-'+k).classList.add('active');
+    obstacles = Array(8).fill().map(() => Array(8).fill(0));
+    maps[k].blocks.forEach(([r,c]) => obstacles[r][c] = 1);
+    maps[k].voids.forEach(([r,c]) => obstacles[r][c] = 2);
+    resetBoard();
+}
+
+function render() {
+    const b = document.getElementById('board'); b.innerHTML = '';
+    let scB=0, scW=0;
+    grid.forEach((row, r) => row.forEach((v, c) => {
+        const cell = document.createElement('div');
+        cell.className = 'cell' + (obstacles[r][c]==1?' block':(obstacles[r][c]==2?' void':''));
+        cell.onclick = () => handleCellClick(r, c);
+        if (v !== 0 && obstacles[r][c] === 0) {
+            const p = document.createElement('div');
+            p.className = `piece ${v===1?'black':'white'}`;
+            cell.appendChild(p);
+            v === 1 ? scB++ : scW++;
+        }
+        if (bestMove && bestMove.r === r && bestMove.c === c) {
+            const h = document.createElement('div'); h.className = 'hint';
+            cell.appendChild(h);
+        }
+        b.appendChild(cell);
+    }));
+    document.getElementById('b-score').innerText = scB;
+    document.getElementById('w-score').innerText = scW;
+    document.getElementById('turn-display').innerText = document.getElementById('turnSelector').value == 1 ? 'ดำ' : 'ขาว';
+}
+
+function getFlips(state, r, c, color) {
+    if (state[r][c] !== 0 || obstacles[r][c] !== 0) return [];
+    let flips = [];
+    const dirs = [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]];
+    dirs.forEach(([dr, dc]) => {
+        let nr = r + dr, nc = c + dc, temp = [];
+        while(nr>=0 && nr<8 && nc>=0 && nc<8 && obstacles[nr][nc]===0 && state[nr][nc]===3-color) {
+            temp.push({r:nr, c:nc}); nr+=dr; nc+=dc;
+        }
+        if(nr>=0 && nr<8 && nc>=0 && nc<8 && obstacles[nr][nc]===0 && state[nr][nc]===color && temp.length > 0) flips = flips.concat(temp);
+    });
+    return flips;
+}
+
+function getValidMoves(state, color) {
+    let moves = [];
+    for(let r=0; r<8; r++) for(let c=0; c<8; c++) if (getFlips(state, r, c, color).length > 0) moves.push({r, c});
+    return moves;
+}
+
+function autoPassLogic() {
+    const turn = parseInt(document.getElementById('turnSelector').value);
+    const moves = getValidMoves(grid, turn);
+    const oppMoves = getValidMoves(grid, 3 - turn);
+
+    if (moves.length === 0 && oppMoves.length > 0) {
+        showPass(turn);
+        setTimeout(() => {
+            document.getElementById('turnSelector').value = 3 - turn;
+            render();
+            triggerAI();
+        }, 1200);
+    } else if (moves.length === 0 && oppMoves.length === 0) {
+        document.getElementById('ai-status').innerText = "จบเกม! กรุณากดเริ่มใหม่";
+        render();
+    } else {
+        triggerAI();
+    }
+}
+
+function showPass(color) {
+    const msg = document.getElementById('passMsg');
+    msg.innerHTML = `PASS: ${color === 1 ? 'สีดำ' : 'สีขาว'}<br><small>ไม่มีที่เดินตาที่ถูกต้อง</small>`;
+    msg.style.display = 'block';
+    setTimeout(() => msg.style.display = 'none', 2000);
+}
+
+function triggerAI() {
+    bestMove = null; render();
+    document.getElementById('ai-status').innerText = "V10 กำลังหาจุดยุทธศาสตร์...";
+    setTimeout(() => {
+        const turn = parseInt(document.getElementById('turnSelector').value);
+        const result = solve(grid, turn, 7); 
+        bestMove = result.move;
+        updateAdvantage(result.rawScore);
+        document.getElementById('ai-status').innerText = "คำนวณเสร็จสิ้น (AI Ready)";
+        render();
+    }, 250);
+}
+
+function solve(state, color, depth) {
+    let moves = getValidMoves(state, color);
+    if (moves.length === 0) return {rawScore: evaluate(state), move: null};
+    let best = color === 1 ? -Infinity : Infinity;
+    let chosen = moves[0];
+    for(let m of moves) {
+        let score = minimax(simulate(state, m.r, m.c, color), depth-1, -Infinity, Infinity, 3-color);
+        if (color === 1 ? score > best : score < best) { best = score; chosen = m; }
+    }
+    return {rawScore: best, move: chosen};
+}
+
+function minimax(state, depth, alpha, beta, color) {
+    if (depth === 0) return evaluate(state);
+    let moves = getValidMoves(state, color);
+    if (moves.length === 0) return minimax(state, depth-1, alpha, beta, 3-color);
+    
+    if (color === 1) {
+        let maxE = -Infinity;
+        for(let m of moves) {
+            maxE = Math.max(maxE, minimax(simulate(state, m.r, m.c, color), depth-1, alpha, beta, 2));
+            alpha = Math.max(alpha, maxE); if(beta <= alpha) break;
+        }
+        return maxE;
+    } else {
+        let minE = Infinity;
+        for(let m of moves) {
+            minE = Math.min(minE, minimax(simulate(state, m.r, m.c, color), depth-1, alpha, beta, 1));
+            beta = Math.min(beta, minE); if(beta <= alpha) break;
+        }
+        return minE;
+    }
+}
+
+// V10 Improved Evaluation: ตรวจสอบความมั่นคงและ Mobility
+function evaluate(state) {
+    let score = 0;
+    let emptyCount = 0;
+    
+    state.forEach((row, r) => row.forEach((v, c) => {
+        if(obstacles[r][c]===0) {
+            if(v===1) score += weights[r][c];
+            else if(v===2) score -= weights[r][c];
+            else emptyCount++;
+        }
+    }));
+    
+    // Mobility: จำนวนตาที่เดินได้ (ยิ่งมีทางเลือกเยอะ ยิ่งได้เปรียบ)
+    let bMoves = getValidMoves(state, 1).length;
+    let wMoves = getValidMoves(state, 2).length;
+    score += (bMoves - wMoves) * 15;
+
+    // Endgame Logic: ถ้าใกล้จบเกม ให้เน้นจำนวนหมากจริง
+    if(emptyCount < 10) {
+        let scB = 0, scW = 0;
+        state.forEach(row => row.forEach(v => { if(v===1) scB++; if(v===2) scW++; }));
+        score += (scB - scW) * 50;
+    }
+
+    return score;
+}
+
+function simulate(state, r, c, color) {
+    let next = state.map(row => [...row]);
+    let flips = getFlips(next, r, c, color);
+    next[r][c] = color; flips.forEach(f => next[f.r][f.c] = color);
+    return next;
+}
+
+function handleCellClick(r, c) {
+    if (obstacles[r][c] !== 0) return;
+    const turn = parseInt(document.getElementById('turnSelector').value);
+    const flips = getFlips(grid, r, c, turn);
+    if (flips.length > 0) {
+        history.push(JSON.stringify(grid));
+        grid[r][c] = turn; flips.forEach(f => grid[f.r][f.c] = turn);
+        document.getElementById('turnSelector').value = 3 - turn;
+        autoPassLogic();
+    } else if (grid[r][c] !== 0) {
+        grid[r][c] = 3 - grid[r][c]; render();
+    }
+}
+
+function updateAdvantage(score) {
+    // ปรับให้แถบพลังสะท้อนความจริงมากขึ้น
+    let p = 50 + (score / 1000 * 50); p = Math.max(2, Math.min(98, p));
+    document.getElementById('adv-black').style.width = p + '%';
+    document.getElementById('adv-white').style.width = (100 - p) + '%';
+    
+    let text = "สูสีมาก";
+    if (score > 150) text = "ดำคุมเกมได้ (มั่นคง)";
+    else if (score < -150) text = "ขาวคุมเกมได้ (มั่นคง)";
+    else if (score > 40) text = "ดำได้เปรียบเล็กน้อย";
+    else if (score < -40) text = "ขาวได้เปรียบเล็กน้อย";
+    
+    document.getElementById('adv-text').innerText = text;
+}
+
+function undo() { if (history.length > 0) { grid = JSON.parse(history.pop()); render(); triggerAI(); } }
+
+function resetBoard() {
+    grid = Array(8).fill().map(() => Array(8).fill(0));
+    // ดำ(1) ขาว(2) ตามรูป image_3c5a09.png
+    grid[3][3] = 1; grid[3][4] = 2; 
+    grid[4][3] = 2; grid[4][4] = 1;
+    bestMove = null;
+    render();
+    autoPassLogic();
+}
+resetBoard();
+</script>
+</body>
+</html>
